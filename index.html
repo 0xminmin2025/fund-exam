@@ -150,6 +150,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   <!-- 导航 -->
   <div class="nav">
     <span class="nav-title">基金从业 · 复习助手</span>
+    <button id="current-user-btn" onclick="showUserPicker()" style="padding:6px 14px;border:1px solid var(--border);background:var(--bg2);color:var(--primary);border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;margin-right:4px">选择用户</button>
     <button class="nav-btn active" onclick="switchMode('flashcard')">闪卡</button>
     <button class="nav-btn" onclick="switchMode('quiz')">刷题</button>
     <button class="nav-btn" onclick="switchMode('knowledge')">知识点</button>
@@ -286,6 +287,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     <div id="stats-detail"></div>
   </div>
 </div>
+<div id="user-picker-overlay"></div>
 
 <script>
 let questions = {}, knowledge = {}, mockExams = {};
@@ -298,6 +300,97 @@ let mockType = 'all';
 let mockState = null; // {paper, index, answers:{}, timer, startTime}
 let wrongSource = 'all';
 let wrongQuiz = null, wrongAnswered = false;
+let currentUser = localStorage.getItem('fund_current_user') || '';
+
+// ========== 用户管理 ==========
+function getUserKey(base) {
+  return currentUser ? `${base}_${currentUser}` : base;
+}
+
+function showUserPicker() {
+  const users = JSON.parse(localStorage.getItem('fund_users') || '[]');
+  let html = `<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.3);z-index:999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)closeUserPicker()">
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:28px;width:90%;max-width:380px;box-shadow:0 8px 30px rgba(0,0,0,0.12)">
+      <div style="font-size:18px;font-weight:700;margin-bottom:20px;text-align:center">选择用户</div>`;
+  
+  users.forEach(u => {
+    const isActive = u === currentUser;
+    html += `<div onclick="selectUser('${u}')" style="padding:14px 18px;border:1px solid ${isActive?'var(--primary)':'var(--border)'};background:${isActive?'var(--primary-bg)':'var(--bg)'};border-radius:10px;margin-bottom:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:15px">
+      <span>${u}${isActive?' (当前)':''}</span>
+      <span onclick="event.stopPropagation();deleteUser('${u}')" style="color:var(--text2);font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg)">删除</span>
+    </div>`;
+  });
+  
+  html += `<div style="display:flex;gap:8px;margin-top:16px">
+      <input id="new-user-input" type="text" placeholder="输入新用户名" style="flex:1;padding:12px 14px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:var(--bg);color:var(--text);outline:none" onkeydown="if(event.key==='Enter')addUser()">
+      <button onclick="addUser()" style="padding:12px 20px;background:var(--primary);color:white;border:none;border-radius:10px;font-size:14px;cursor:pointer;font-weight:600;white-space:nowrap">添加</button>
+    </div>
+    </div></div>`;
+  
+  document.getElementById('user-picker-overlay').innerHTML = html;
+}
+
+function closeUserPicker() {
+  document.getElementById('user-picker-overlay').innerHTML = '';
+}
+
+function selectUser(name) {
+  currentUser = name;
+  localStorage.setItem('fund_current_user', name);
+  document.getElementById('current-user-btn').textContent = name;
+  closeUserPicker();
+  updateAll();
+}
+
+function addUser() {
+  const input = document.getElementById('new-user-input');
+  const name = input.value.trim();
+  if (!name) return;
+  
+  const users = JSON.parse(localStorage.getItem('fund_users') || '[]');
+  if (!users.includes(name)) {
+    users.push(name);
+    localStorage.setItem('fund_users', JSON.stringify(users));
+  }
+  selectUser(name);
+}
+
+function deleteUser(name) {
+  if (!confirm(`确定删除用户「${name}」？该用户的所有做题记录也会被清除。`)) return;
+  
+  const users = JSON.parse(localStorage.getItem('fund_users') || '[]');
+  const idx = users.indexOf(name);
+  if (idx >= 0) users.splice(idx, 1);
+  localStorage.setItem('fund_users', JSON.stringify(users));
+  
+  // Clear user data
+  localStorage.removeItem(`fund_exam_progress_${name}`);
+  localStorage.removeItem(`fund_wrong_book_${name}`);
+  
+  if (currentUser === name) {
+    currentUser = users[0] || '';
+    localStorage.setItem('fund_current_user', currentUser);
+    document.getElementById('current-user-btn').textContent = currentUser || '选择用户';
+  }
+  showUserPicker();
+}
+
+function initUser() {
+  const users = JSON.parse(localStorage.getItem('fund_users') || '[]');
+  const btn = document.getElementById('current-user-btn');
+  
+  if (!currentUser && users.length > 0) {
+    currentUser = users[0];
+    localStorage.setItem('fund_current_user', currentUser);
+  }
+  
+  btn.textContent = currentUser || '选择用户';
+  
+  // First visit: show picker
+  if (!currentUser) {
+    setTimeout(showUserPicker, 500);
+  }
+}
 
 // ========== Markdown 渲染 ==========
 function renderMarkdown(text) {
@@ -355,10 +448,10 @@ function renderMarkdown(text) {
 
 // 进度存储
 function getProgress() {
-  return JSON.parse(localStorage.getItem('fund_exam_progress') || '{}');
+  return JSON.parse(localStorage.getItem(getUserKey('fund_exam_progress')) || '{}');
 }
 function saveProgress(p) {
-  localStorage.setItem('fund_exam_progress', JSON.stringify(p));
+  localStorage.setItem(getUserKey('fund_exam_progress'), JSON.stringify(p));
 }
 
 // 加载数据
@@ -703,7 +796,7 @@ function showStatsDetail() {
     </div>`;
   }
   
-  html += `<button onclick="if(confirm('确定清除所有进度？')){localStorage.removeItem('fund_exam_progress');updateAll()}" style="width:100%;padding:12px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:10px;cursor:pointer;font-size:14px">清除所有进度</button>`;
+  html += `<button onclick="if(confirm('确定清除所有进度？')){localStorage.removeItem(getUserKey('fund_exam_progress'));updateAll()}" style="width:100%;padding:12px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:10px;cursor:pointer;font-size:14px">清除所有进度</button>`;
   
   document.getElementById('stats-detail').innerHTML = html;
 }
@@ -953,10 +1046,10 @@ function finishMockExam() {
 
 // ========== 错题本 ==========
 function getWrongBook() {
-  return JSON.parse(localStorage.getItem('fund_wrong_book') || '{}');
+  return JSON.parse(localStorage.getItem(getUserKey('fund_wrong_book')) || '{}');
 }
 function saveWrongBook(wb) {
-  localStorage.setItem('fund_wrong_book', JSON.stringify(wb));
+  localStorage.setItem(getUserKey('fund_wrong_book'), JSON.stringify(wb));
 }
 
 function addWrongQuestion(q, source, userAnswer) {
@@ -1136,6 +1229,7 @@ function clearWrongQuestions() {
 }
 
 // 启动
+initUser();
 loadData();
 </script>
 </body>

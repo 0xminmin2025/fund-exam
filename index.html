@@ -457,6 +457,7 @@ function saveProgress(p) {
 // 加载数据 — 按科目按需加载，减少初始下载量
 const DATA_VER = '20260504';
 const loadedSubjects = {};
+const SUBJ_FILE = {'法规':'fagui','私募股权':'simu','证券投资':'zhengquan'};
 
 async function fetchWithRetry(url, retries = 3) {
   for (let i = 0; i < retries; i++) {
@@ -493,9 +494,10 @@ async function loadSubject(subj) {
   showLoading('正在加载「' + subj + '」题库...');
   
   try {
+    const fn = SUBJ_FILE[subj] || subj;
     const [q, m] = await Promise.all([
-      fetchWithRetry('q_' + subj + '.json'),
-      fetchWithRetry('m_' + subj + '.json')
+      fetchWithRetry('q_' + fn + '.json'),
+      fetchWithRetry('m_' + fn + '.json')
     ]);
     questions[subj] = q;
     mockExams[subj] = m;

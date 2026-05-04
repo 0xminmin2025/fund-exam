@@ -501,16 +501,23 @@ function saveProgress(p) {
 const DATA_VER = '20260504';
 const loadedSubjects = {};
 const SUBJ_FILE = {'法规':'fagui','私募股权':'simu','证券投资':'zhengquan'};
+// CDN 加速（jsDelivr 国内有节点），回退到相对路径
+const CDN_BASE = 'https://cdn.jsdelivr.net/gh/0xminmin2025/fund-exam@main/';
 
-async function fetchWithRetry(url, retries = 3) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const resp = await fetch(url + '?v=' + DATA_VER, {cache: 'default'});
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      return await resp.json();
-    } catch (e) {
-      if (i === retries - 1) throw e;
-      await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+async function fetchWithRetry(filename, retries = 2) {
+  // 先尝试 CDN，失败回退到 GitHub Pages 相对路径
+  const urls = [CDN_BASE + filename, filename];
+  for (const url of urls) {
+    for (let i = 0; i < retries; i++) {
+      try {
+        const resp = await fetch(url + '?v=' + DATA_VER, {cache: 'default'});
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        return await resp.json();
+      } catch (e) {
+        if (i === retries - 1 && url === urls[urls.length - 1]) throw e;
+        if (i === retries - 1) break; // try next URL
+        await new Promise(r => setTimeout(r, 800));
+      }
     }
   }
 }

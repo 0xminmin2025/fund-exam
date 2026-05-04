@@ -454,11 +454,14 @@ function saveProgress(p) {
   localStorage.setItem(getUserKey('fund_exam_progress'), JSON.stringify(p));
 }
 
-// 加载数据
+// 加载数据 — 按科目按需加载，减少初始下载量
+const DATA_VER = '20260504';
+const loadedSubjects = {};
+
 async function fetchWithRetry(url, retries = 3) {
   for (let i = 0; i < retries; i++) {
     try {
-      const resp = await fetch(url + '?v=' + Date.now(), {cache: 'no-cache'});
+      const resp = await fetch(url + '?v=' + DATA_VER, {cache: 'default'});
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       return await resp.json();
     } catch (e) {
@@ -468,30 +471,56 @@ async function fetchWithRetry(url, retries = 3) {
   }
 }
 
-async function loadData() {
-  // 显示加载提示
-  const overlay = document.createElement('div');
-  overlay.id = 'loading-overlay';
-  overlay.innerHTML = '<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.92);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center"><div style="font-size:20px;font-weight:700;color:var(--primary);margin-bottom:12px">加载题库中...</div><div id="load-progress" style="font-size:14px;color:var(--text2)">正在下载数据</div></div>';
-  document.body.appendChild(overlay);
+function showLoading(msg) {
+  let overlay = document.getElementById('loading-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'loading-overlay';
+    overlay.innerHTML = '<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,0.92);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center"><div style="font-size:20px;font-weight:700;color:var(--primary);margin-bottom:12px">加载中...</div><div id="load-progress" style="font-size:14px;color:var(--text2)"></div></div>';
+    document.body.appendChild(overlay);
+  }
+  document.getElementById('load-progress').textContent = msg;
+}
 
+function hideLoading() {
+  const overlay = document.getElementById('loading-overlay');
+  if (overlay) overlay.remove();
+}
+
+async function loadSubject(subj) {
+  if (loadedSubjects[subj]) return; // 已加载过
+  
+  showLoading('正在加载「' + subj + '」题库...');
+  
   try {
-    document.getElementById('load-progress').textContent = '正在加载题目数据...';
-    questions = await fetchWithRetry('questions.json');
-    document.getElementById('load-progress').textContent = '正在加载知识点...';
-    knowledge = await fetchWithRetry('knowledge.json');
-    document.getElementById('load-progress').textContent = '正在加载模拟试卷...';
-    mockExams = await fetchWithRetry('mock_exams.json');
-    
-    // 验证数据完整性
-    const total = Object.values(questions).reduce((s, arr) => s + arr.length, 0);
-    if (total === 0) throw new Error('题库数据为空');
-    
-    overlay.remove();
-    updateAll();
+    const [q, m] = await Promise.all([
+      fetchWithRetry('q_' + subj + '.json'),
+      fetchWithRetry('m_' + subj + '.json')
+    ]);
+    questions[subj] = q;
+    mockExams[subj] = m;
+    loadedSubjects[subj] = true;
+    hideLoading();
   } catch (e) {
     const el = document.getElementById('load-progress');
-    if (el) el.innerHTML = '❌ 数据加载失败：' + e.message + '<br><br><button onclick="location.reload()" style="padding:10px 24px;background:var(--primary);color:white;border:none;border-radius:8px;font-size:15px;cursor:pointer">点击重试</button>';
+    if (el) el.innerHTML = '❌ 加载失败：' + e.message + '<br><br><button onclick="loadSubjectAndUpdate(\'' + subj + '\')" style="padding:10px 24px;background:var(--primary);color:white;border:none;border-radius:8px;font-size:15px;cursor:pointer">点击重试</button>';
+    throw e;
+  }
+}
+
+async function loadSubjectAndUpdate(subj) {
+  await loadSubject(subj);
+  updateAll();
+}
+
+async function loadData() {
+  showLoading('正在加载知识点...');
+  try {
+    knowledge = await fetchWithRetry('knowledge.json');
+    await loadSubject(currentSubject);
+    updateAll();
+  } catch (e) {
+    // loadSubject already shows error UI
   }
 }
 
@@ -502,10 +531,13 @@ function switchMode(mode) {
   updateAll();
 }
 
-function switchSubject(s) {
+async function switchSubject(s) {
   currentSubject = s;
   document.querySelectorAll('.subject-btn').forEach(b => b.classList.toggle('active', b.textContent === s));
-  updateAll();
+  try {
+    await loadSubject(s);
+    updateAll();
+  } catch(e) { /* loadSubject shows error UI */ }
 }
 
 function updateAll() {

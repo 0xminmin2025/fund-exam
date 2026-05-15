@@ -251,6 +251,7 @@ img, table, pre, code { max-width: 100%; overflow-x: auto; }
       <button class="filter-btn active" onclick="setQuizSource('all')">全部</button>
       <button class="filter-btn" onclick="setQuizSource('wrong')">错题</button>
       <button class="filter-btn" onclick="setQuizSource('unseen')">未做</button>
+      <button class="filter-btn" onclick="setQuizSource('secret')" style="border-color:#DC2626;color:#DC2626">🔥密卷</button>
     </div>
     <div id="quiz-area"></div>
   </div>
@@ -276,6 +277,7 @@ img, table, pre, code { max-width: 100%; overflow-x: auto; }
         <button class="filter-btn" onclick="setMockType('真题')">真题</button>
         <button class="filter-btn" onclick="setMockType('预测卷')">预测卷</button>
         <button class="filter-btn" onclick="setMockType('点题卷')">点题卷</button>
+        <button class="filter-btn" onclick="setMockType('密卷')" style="border-color:#DC2626;color:#DC2626">🔥密卷</button>
       </div>
       <div id="mock-list" class="knowledge-list"></div>
     </div>
@@ -773,7 +775,7 @@ document.addEventListener('touchend', function(e) {
 function setQuizSource(s) {
   quizSource = s;
   document.querySelectorAll('#mode-quiz .filter-bar .filter-btn').forEach(b => {
-    b.classList.toggle('active', b.textContent.includes(s==='all'?'全部':s==='wrong'?'错题':'未做'));
+    b.classList.toggle('active', b.textContent.includes(s==='all'?'全部':s==='wrong'?'错题':s==='secret'?'密卷':'未做'));
   });
   showQuiz();
 }
@@ -786,6 +788,7 @@ function showQuiz() {
   let pool = (questions[currentSubject] || []).filter(q => q.answer);
   if (quizSource === 'wrong') pool = pool.filter(q => quizState[q.id] === false);
   if (quizSource === 'unseen') pool = pool.filter(q => quizState[q.id] === undefined);
+  if (quizSource === 'secret') pool = pool.filter(q => (q.source || '').includes('密卷'));
   
   if (pool.length === 0) {
     document.getElementById('quiz-area').innerHTML = '<div style="text-align:center;padding:40px;color:var(--text2)">没有匹配的题目</div>';
@@ -956,7 +959,7 @@ async function showMockList() {
     if (history) {
       badge = `<span style="font-size:12px;padding:2px 8px;border-radius:4px;background:var(--success-bg);color:var(--success)">${history.score}分</span>`;
     }
-    const typeColor = paper.type === '真题' ? 'var(--danger)' : paper.type === '预测卷' ? 'var(--primary)' : 'var(--warning)';
+    const typeColor = paper.type === '真题' ? 'var(--danger)' : paper.type === '预测卷' ? 'var(--primary)' : paper.type === '密卷' ? '#DC2626' : 'var(--warning)';
     
     html += `<div class="knowledge-card" style="border-left-color:${typeColor}" onclick="startMockExam(${i})">
       <div style="display:flex;justify-content:space-between;align-items:center">
